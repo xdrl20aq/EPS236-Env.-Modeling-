@@ -91,18 +91,30 @@ advection_diffusion_eqn = function(D, x, t_i) {
 }
 
 t_1 = 1:100
-box_num = 26
-plot(t, Conc[box_num,], ylim = c(0, C_i), ylab = paste("conc of box", box_num))
 d_list = seq(0.01, 0.05, 0.0001)
-sqrt_err_list = rep(NA, length(d_list))
-idx = 1
-for (d_guess in d_list) {
-  diff = Conc[box_num, t_1] - advection_diffusion_eqn(d_guess, box_num - i_box, t_1)
-  sqrt_err = sqrt(sum(diff^2))
-  sqrt_err_list[idx] = sqrt_err
-  idx = idx + 1
+didx = 1
+x = seq(1, n_box) - i_box
+
+ds = rep(NA, length(t_1))
+
+for (t_i in t_1) {
+  idx = 1
+  sqrt_err_list = rep(NA, length(d_list))
+  for (d_guess in d_list) {
+    diff = Conc[, t_i] - advection_diffusion_eqn(d_guess, x, t_i)
+    sqrt_err = sqrt(sum(diff^2))
+    sqrt_err_list[idx] = sqrt_err
+    
+    idx = idx + 1
+  }
+  min_sqrt_err_idx = which(sqrt_err_list == min(sqrt_err_list))
+  d_best = d_list[min_sqrt_err_idx]
+  ds[didx] = d_best
+  plot(x, Conc[, t_i], ylim = c(0, C_i), ylab = paste("conc at time", t_i))
+  didx = didx + 1
 }
-min_sqrt_err_idx = which(sqrt_err_list == min(sqrt_err_list))
-d_best = d_list[min_sqrt_err_idx]
+
+ds
+
 d_best
-lines(t_1, advection_diffusion_eqn(d_best, box_num - i_box, t_1))
+lines(x, advection_diffusion_eqn(d_best, x, t_1))
