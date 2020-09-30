@@ -23,8 +23,8 @@ n_box = sum(boxes)
 # advection velocity
 v_a = .014
 # diffusion coeff
-kh1 = .02
-kh2 = .01
+kh1 = .05
+kh2 = .03
 kh3 = .03
 # initial box number
 i_box = 10
@@ -33,67 +33,7 @@ C_i = 10
 # time series
 t = 0:100
 
-# diffusion
-
-trbl = function(box_num, layer_i, cornerNum, startbox, endbox) {
-  if (i == startbox) {
-    top = i + (9 + 8 * (layer_i - 2))
-    right = i + 1
-    bottom = endbox
-    left = i + (39 + 16 * (layer_i - 3))
-    flow = corner1
-  } else if (0 < cornerNum & cornerNum < 1) {
-    top = i + (9 + 8 * (layer_i - 2))
-    right = i + 1
-    bottom = i - (9 + 8 * (layer_i - 3))
-    left = i - 1
-    flow = edge1
-  } else if (cornerNum == 1) {
-    top = i + (9 + 8 * (layer_i - 2))
-    right = i + (9 + 8 * (layer_i - 2) + 2)
-    bottom = i + 1
-    left = i - 1
-    flow = corner2
-  } else if (1 < cornerNum & cornerNum < 2) {
-    top = i - 1
-    right = i + (9 + 8 * (layer_i - 2) + 2)
-    bottom = i + 1
-    left = i - (9 + 8 * (layer_i - 3) + 2)
-    flow = edge2
-  } else if (cornerNum == 2) {
-    top = i - 1
-    right = i + (9 + 8 * (layer_i - 2) + 2)
-    bottom = i + (9 + 8 * (layer_i - 2) + 4)
-    left = i + 1
-    flow = corner3
-  } else if (2 < cornerNum & cornerNum < 3) {
-    top = i - (9 + 8 * (layer_i - 3) + 4)
-    right = i - 1
-    bottom = i + (9 + 8 * (layer_i - 2) + 4)
-    left = i - 1
-    flow = edge3
-  } else if (cornerNum == 3) {
-    top = i + 1
-    right = i - 1
-    bottom = i + 1
-    left = i + (9 + 8 * (layer_i - 2) + 6)
-    flow = corner4
-  } else if (i == endbox) {
-    top = startbox
-    right = i - (9 + 8 * (layer_i - 3) + 6)
-    bottom = i - 1
-    left = i + (9 + 8 * (layer_i - 2) + 6)
-    flow = edge4
-  } else if (3 < cornerNum & cornerNum < 4) {
-    top = i + 1
-    right = i - (9 + 8 * (layer_i - 3) + 6)
-    bottom = i - 1
-    left = i + (9 + 8 * (layer_i - 2) + 6)
-    flow = edge4
-  }
-  return( rbind(c(top, right, bottom, left), flow) )
-}
-
+# flows
 corner1 = c(kh3, kh1, kh1, kh3)
 edge1 = c(kh3, kh1, kh2, kh1)
 corner2 = c(kh3, kh3, kh1, kh1)
@@ -103,8 +43,10 @@ edge3 = c(kh2, kh1, kh3, kh1)
 corner4 = c(kh1, kh1, kh3, kh3)
 edge4 = c(kh1, kh2, kh1, kh3)
 
+
 K = matrix(0.0, nrow = n_box, ncol = n_box)
 
+# diffusion
 add_circular_diffusion_term = function(K, kh1, kh2, kh3, n_layer, boxes) {
   for (layer_i in 1:n_layer) {
     if (layer_i == 1) {
@@ -196,8 +138,6 @@ add_circular_diffusion_term = function(K, kh1, kh2, kh3, n_layer, boxes) {
         adjacent_fix = adjacent[adjacent <= n_box]
         K[i, adjacent_fix] = K[i, adjacent_fix] + flow_fix
         K[i, i] =　K[i, i] - sum(flow_fix)
-        print(i)
-        print(adjacent_fix)
       }
     }
   }
@@ -234,28 +174,43 @@ add_circular_advection_term = function(K, v_a, n_box, n_layer) {
 
 # construct transition matrix
 K = add_circular_diffusion_term(K, kh1, kh2, kh3, n_layer, n_box)
-sum(K)
-which(abs(rowSums(K)) > 0.01)
 
-K
+# making sure mass is conserved
+sum(K)
+which(abs(rowSums(K)) > 0.001)
+which(abs(colSums(K)) > 0.001)
 
 K = add_circular_advection_term(K, v_a, n_box, n_layer)
 
 sum(K)
 which(abs(rowSums(K)) > 0.01)
 
-m# eigenvalues and eigenvectors
-eigens = eigen(K)
+library(Matrix)
+K_0 = bdiag(K, K)
+
+add_connection_diffusion = function(K, kh1, n_layer) {
+  nexttop = (n_layer * 2 - 1)^2 + 1
+  K[1, nexttop] = K[1, nexttop] + kh1
+  K[1, 1] = K[1, 1] - kh1
+  K[nexttop, 1] = K[nexttop, 1] + kh1
+  K[nexttop, nexttop] = K[nexttop, nexttop] - kh1
+  return( K )
+}
+
+K_0 = add_connection_diffusion(K_0, kh1, n_layer)
+
+# eigenvalues and eigenvectors
+eigens = eigen(K_0)
 e_vals = eigens$values
 Xe = eigens$vectors
 
 # initial condition
-C_0 = matrix(0, n_box, 1)
+C_0 = matrix(0, nrow = n_box * 2, ncol = 1)
 C_0[i_box] = C_i
 
 
 # matrix to store the transition of concentration
-Conc = matrix(nrow = n_box, ncol = length(t))
+Conc = matrix(nrow = n_box * 2, ncol = length(t))
 Conc[, 1] = C_0
 # loop over time to calculate C(t) for t
 for (t_i in t) {
@@ -263,9 +218,10 @@ for (t_i in t) {
     Lambda_t = exp_Lambda(e_vals, t_i)
     conc_t_i = Re(Xe %*% Lambda_t %*% solve(Xe, C_0))
     Conc[, t_i+1] = conc_t_i
+    # plotting!
     filename = formatC(t_i, width = 3, format = "d", flag = "0")
     png(paste("./part2_movie/", filename, ".png", sep=""))
-    plot(x = 1:n_box, y = conc_t_i, xlim = c(1, n_box), ylim = c(0, C_i), xlab = "#box", ylab = "concentration")
+    plot(x = 1:(n_box*2), y = conc_t_i, xlim = c(1, n_box*2), ylim = c(0, C_i), xlab = "#box", ylab = "concentration")
     dev.off()
   }
 }
